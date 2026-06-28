@@ -155,7 +155,7 @@
     <div class="login-box">
       <h2>SYSTEM LOGIN</h2>
       <input type="password" id="passInput" placeholder="Enter License Key">
-      <button onclick="checkPass()">ACCESS SYSTEM</button>
+      <button id="accessBtn">ACCESS SYSTEM</button>
       <p id="errorMsg" style="color: #ff3366; font-size: 13px; margin-top: 15px; display: none; font-weight: 900; text-shadow: 0 0 10px #ff3366;">ACCESS DENIED! WRONG KEY.</p>
     </div>
   </div>
@@ -216,9 +216,11 @@
     </div>
   </div>
 
+<!-- Firebase App, Analytics এবং Realtime Database SDK (এক সাথে যুক্ত করা হয়েছে) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDR-xSjjR-EkWo7oAcpgP2xJ32wz17fC1o",
@@ -233,6 +235,58 @@
 
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
+  const db = getDatabase(app);
+
+  let systemKey = "tanvir323"; // ডিফল্ট কি (যদি ব্যাকএন্ডে না থাকে)
+  let userIP = "Fetching...";
+
+  // ইউজারের IP বের করে ফায়ারবেসে ট্র্যাক পাঠানো এবং ব্যান চেক করা
+  fetch('https://api.ipify.org?format=json')
+    .then(res => res.json())
+    .then(data => {
+      userIP = data.ip;
+      const cleanIP = userIP.replace(/\./g, '_');
+      
+      // লাইভ ইউজার ট্র্যাকিং
+      set(ref(db, 'live_users/' + cleanIP), {
+        ip: userIP,
+        lastActive: Date.now()
+      });
+
+      // ব্যানলিস্ট চেকিং (যদি এডমিন ব্যান করে)
+      onValue(ref(db, 'banned_ips/' + cleanIP), (snapshot) => {
+        if(snapshot.exists()) {
+          alert("YOUR IP IS PERMANENTLY BANNED BY ADMIN!");
+          document.getElementById('toolScreen').style.display = 'none';
+          document.getElementById('loginOverlay').style.display = 'flex';
+          document.getElementById('errorMsg').innerText = "ACCESS DENIED! YOUR IP IS BANNED.";
+          document.getElementById('errorMsg').style.display = 'block';
+          document.getElementById('accessBtn').disabled = true;
+        }
+      });
+    }).catch(e => console.log("IP tracking offline"));
+
+  // ফায়ারবেস থেকে ডাইনামিক লাইসেন্স কি রিড করা
+  onValue(ref(db, 'system_config/license_key'), (snapshot) => {
+    if(snapshot.exists()) {
+      systemKey = snapshot.val();
+    }
+  });
+
+  window.checkPass = function() {
+    const input = document.getElementById('passInput').value.trim();
+    if(input === systemKey) {
+      document.getElementById('loginOverlay').style.display = 'none';
+      document.getElementById('toolScreen').style.display = 'block';
+      startApp();
+    } else {
+      document.getElementById('errorMsg').innerText = "ACCESS DENIED! WRONG KEY.";
+      document.getElementById('errorMsg').style.display = 'block';
+    }
+  }
+
+  // বাটন ক্লিক ইভেন্ট ট্রিগার করা
+  document.getElementById('accessBtn').onclick = window.checkPass;
 </script>
 
 <script>
@@ -241,17 +295,6 @@
   let nextForceWin = false;       
   let forceWinCount = 0;         
   let state = { results: [], wins: 0, losses: 0, streak: 0, lastP: null, curPred: null, cd: 30, activeTab: 'pred' };
-
-  window.checkPass = function() {
-    const input = document.getElementById('passInput').value.trim().toLowerCase();
-    if(input === "tanvir323") {
-      document.getElementById('loginOverlay').style.display = 'none';
-      document.getElementById('toolScreen').style.display = 'block';
-      startApp();
-    } else {
-      document.getElementById('errorMsg').style.display = 'block';
-    }
-  }
 
   const canvas = document.getElementById('bgCanvas');
   const ctx = canvas.getContext('2d');
@@ -366,11 +409,9 @@
         let actualNum = parseInt(latest.number);
         let actualType = actualNum >= 5 ? 'BIG' : 'SMALL';
         
-        // এখানে রিয়েল গেমের ফলাফলের সাথে ম্যাচ করা হচ্ছে
         let isWin = (state.curPred.pick === actualType);
         let isNumWin = state.curPred.nums.includes(actualNum);
 
-        // সিগন্যাল আসলেই উইন বা লস কিনা তা পুশ করার আগে নিখুঁতভাবে চেক করা হচ্ছে
         sessionPredictions.unshift({ p: latest.issueNumber, pick: state.curPred.pick, win: isWin });
         sessionNumPredictions.unshift({ p: latest.issueNumber, picks: state.curPred.nums, res: actualNum, win: isNumWin });
 
