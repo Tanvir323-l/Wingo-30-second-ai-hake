@@ -165,7 +165,7 @@
   <div id="toolScreen" class="view-screen">
     <header>
       <div class="premium-badge">ULTRA VIP ACCESS</div>
-      <h1 id="displayHackName">𝐏𝐫𝐞𝐦𝐢𝐮𝐦-𝐚𝐢-𝐡𝐚𝐜𝐤</h1>
+      <h1 id="displayHackName">𝐏𝐫𝐞𝐦𝐢𝐮𝐦-𝐚𝐢-𝐡𝐚𝐜𝐡</h1>
     </header>
 
     <div class="container">
@@ -216,8 +216,33 @@
     </div>
   </div>
 
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDR-xSjjR-EkWo7oAcpgP2xJ32wz17fC1o",
+    authDomain: "fresh-b7ec1.firebaseapp.com",
+    databaseURL: "https://fresh-b7ec1-default-rtdb.firebaseio.com",
+    projectId: "fresh-b7ec1",
+    storageBucket: "fresh-b7ec1.firebasestorage.app",
+    messagingSenderId: "953506022680",
+    appId: "1:953506022680:web:581bf0ad288069dfce4a6d",
+    measurementId: "G-JEH6BTL4XZ"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
+
 <script>
-  function checkPass() {
+  let sessionPredictions = [];
+  let sessionNumPredictions = [];
+  let nextForceWin = false;       
+  let forceWinCount = 0;         
+  let state = { results: [], wins: 0, losses: 0, streak: 0, lastP: null, curPred: null, cd: 30, activeTab: 'pred' };
+
+  window.checkPass = function() {
     const input = document.getElementById('passInput').value.trim().toLowerCase();
     if(input === "tanvir323") {
       document.getElementById('loginOverlay').style.display = 'none';
@@ -228,15 +253,10 @@
     }
   }
 
-  let sessionPredictions = [];
-  let sessionNumPredictions = [];
-  let nextForceWin = false;       
-  let forceWinCount = 0;         
-  let state = { results: [], wins: 0, losses: 0, streak: 0, lastP: null, curPred: null, cd: 30, activeTab: 'pred' };
-
   const canvas = document.getElementById('bgCanvas');
   const ctx = canvas.getContext('2d');
   let particles = [];
+  
   function initParticles() {
       canvas.width = window.innerWidth; canvas.height = window.innerHeight;
       particles = [];
@@ -343,12 +363,14 @@
     
     if(latest.issueNumber !== state.lastP) {
       if(state.curPred && state.curPred.period === latest.issueNumber) {
-        const actualNum = parseInt(latest.number);
-        const actualType = actualNum >= 5 ? 'BIG' : 'SMALL';
+        let actualNum = parseInt(latest.number);
+        let actualType = actualNum >= 5 ? 'BIG' : 'SMALL';
         
+        // এখানে রিয়েল গেমের ফলাফলের সাথে ম্যাচ করা হচ্ছে
         let isWin = (state.curPred.pick === actualType);
         let isNumWin = state.curPred.nums.includes(actualNum);
 
+        // সিগন্যাল আসলেই উইন বা লস কিনা তা পুশ করার আগে নিখুঁতভাবে চেক করা হচ্ছে
         sessionPredictions.unshift({ p: latest.issueNumber, pick: state.curPred.pick, win: isWin });
         sessionNumPredictions.unshift({ p: latest.issueNumber, picks: state.curPred.nums, res: actualNum, win: isNumWin });
 
@@ -365,7 +387,7 @@
           }
         } else { 
           state.losses++; state.streak = 0; 
-          addLog(`REAL GAME MISMATCH! 1-STEP RECOVERY ACTIVATING...`); 
+          addLog(`REAL GAME LOSS! RECOVERY PATTERN INITIALIZED...`); 
           nextForceWin = true; 
           forceWinCount = 0;
         }
@@ -374,7 +396,6 @@
       }
       
       const nextP = String(BigInt(latest.issueNumber) + 1n);
-      
       let upcomingType = (parseInt(latest.number) >= 5 ? 'BIG' : 'SMALL');
       let prediction = getAIPrediction(parseInt(latest.number), nextP);
 
@@ -397,6 +418,7 @@
       
       let seed = parseInt(nextP.slice(-2)) || 0;
       let conf = 96 + (seed % 4);
+      if (nextForceWin) conf = 100; 
       document.getElementById('confTxt').innerText = conf + '%';
       document.getElementById('confBar').style.width = conf + '%';
     }
@@ -423,7 +445,10 @@
   window.switchTab = function(t) {
     state.activeTab = t;
     document.querySelectorAll('.tab-hq').forEach(b => b.classList.remove('active'));
-    document.getElementById(t + 'Tab').classList.add('active');
+    
+    const activeBtn = document.getElementById(t + 'Tab');
+    if(activeBtn) activeBtn.classList.add('active');
+    
     renderTable();
   }
 
@@ -432,6 +457,7 @@
     const b = document.getElementById('tableBody');
     if(!b || !h) return;
     b.innerHTML = "";
+    
     if(state.activeTab === 'pred') {
       h.innerHTML = '<tr><th>PERIOD (FULL)</th><th>SIGNAL</th><th>RESULT</th></tr>';
       sessionPredictions.forEach(x => {
@@ -442,7 +468,7 @@
       sessionNumPredictions.forEach(x => {
         b.innerHTML += `<tr><td style="color:var(--gold); font-weight:900;">${x.p}</td><td style="font-weight:900;">${x.picks.join(',')}</td><td style="color:${x.win?'#00ffaa':'#ff3366'}; font-weight:900;">${x.win?'WIN':'LOSS'} (${x.res})</td></tr>`;
       });
-    } else {
+    } else if(state.activeTab === 'game') {
       h.innerHTML = '<tr><th>PERIOD (FULL)</th><th>NUM</th><th>TYPE</th></tr>';
       state.results.slice(0, 15).forEach(x => {
         const sz = parseInt(x.number) >= 5 ? 'BIG' : 'SMALL';
@@ -452,4 +478,4 @@
   }
 </script>
 </body>
-</html>
+  </html>
